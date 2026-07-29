@@ -9,6 +9,7 @@ dependencies = [
     "bitsandbytes>=0.49.2",
     "datasets>=4.8.5",
     "huggingface-hub>=1.16.1",
+    "monorepo",
     "openai>=2.38.0",
     "peft>=0.19.1",
     "pillow>=12.2.0",
@@ -20,3 +21,6 @@ dependencies = [
     "trl>=1.5.0",
     "wandb>=0.27.0",
 ]
+
+[tool.uv.sources]
+monorepo = { git = "https://github.com/e-zorzi/monorepo" }

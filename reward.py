@@ -4,6 +4,7 @@ COMPLETIONS_LOG = "/kaggle/working/completions_log.jsonl"
 import re
 import logging
 from config import ALPHA, BETA, GAMMA
+from cerebras_client import evaluate_reasoning
 
 logger = logging.getLogger(__name__)
 
@@ -66,22 +67,25 @@ def compute_score_reward(predicted, ground_truth):
     return 0.0
 
 def compute_reasoning_reward(motivation, gt_reasoning):
-    if not motivation or not gt_reasoning:
-        return 0.0
-    m = motivation.lower()
-    g = gt_reasoning.lower()
-    gt_colors = set(w for w in COLOR_WORDS if w in g)
-    pred_colors = set(w for w in COLOR_WORDS if w in m)
-    color = len(pred_colors & gt_colors) / len(gt_colors) if gt_colors else 0.5
-    gt_tex = set(w for w in TEXTURE_WORDS if w in g)
-    pred_tex = set(w for w in TEXTURE_WORDS if w in m)
-    texture = len(pred_tex & gt_tex) / len(gt_tex) if gt_tex else 0.5
-    gt_spa = set(w for w in SPATIAL_WORDS if w in g)
-    pred_spa = set(w for w in SPATIAL_WORDS if w in m)
-    spatial = len(pred_spa & gt_spa) / len(gt_spa) if gt_spa else 0.5
-    reasoning_r = (color + texture + spatial) / 3.0
-    print(f"    color={color:.2f} texture={texture:.2f} spatial={spatial:.2f} → reasoning={reasoning_r:.2f}")
-    return reasoning_r
+    return evaluate_reasoning(motivation, gt_reasoning)
+
+# def compute_reasoning_reward(motivation, gt_reasoning):
+#     if not motivation or not gt_reasoning:
+#         return 0.0
+#     m = motivation.lower()
+#     g = gt_reasoning.lower()
+#     gt_colors = set(w for w in COLOR_WORDS if w in g)
+#     pred_colors = set(w for w in COLOR_WORDS if w in m)
+#     color = len(pred_colors & gt_colors) / len(gt_colors) if gt_colors else 0.5
+#     gt_tex = set(w for w in TEXTURE_WORDS if w in g)
+#     pred_tex = set(w for w in TEXTURE_WORDS if w in m)
+#     texture = len(pred_tex & gt_tex) / len(gt_tex) if gt_tex else 0.5
+#     gt_spa = set(w for w in SPATIAL_WORDS if w in g)
+#     pred_spa = set(w for w in SPATIAL_WORDS if w in m)
+#     spatial = len(pred_spa & gt_spa) / len(gt_spa) if gt_spa else 0.5
+#     reasoning_r = (color + texture + spatial) / 3.0
+#     print(f"    color={color:.2f} texture={texture:.2f} spatial={spatial:.2f} → reasoning={reasoning_r:.2f}")
+#     return reasoning_r
 
 def reward_function(prompts, completions, reasoning, score, **kwargs):
     rewards = []

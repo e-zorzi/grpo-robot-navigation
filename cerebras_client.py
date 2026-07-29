@@ -1,37 +1,23 @@
 import re
-import time
+from time import sleep
 import logging
 from typing import Optional
 from openai import OpenAI, RateLimitError, APIError
-
+from prompts import COLOR_PROMPT, TEXTURE_PROMPT, SPATIAL_PROMPT
 from config import (
-    CEREBRAS_API_KEY,
-    CEREBRAS_BASE_URL,
-    CEREBRAS_MODEL,
-    CEREBRAS_MAX_RETRIES,
-    CEREBRAS_RETRY_DELAY,
+    EVALUATOR_MODEL_NAME
 )
 
+from monorepo import load_api_keys, CerebrasLLM
+
+load_api_keys()
 logger = logging.getLogger(__name__)
 
 
 class CerebrasClient:
     def __init__(self):
-        if not CEREBRAS_API_KEY:
-            raise ValueError(
-                "CEREBRAS_API_KEY not found in ~/.env.ml"
-            )
-
-        # Use OpenAI library pointing to Cerebras
-        self.client = OpenAI(
-            api_key=CEREBRAS_API_KEY,
-            base_url=CEREBRAS_BASE_URL,
-        )
-        self.model = CEREBRAS_MODEL
-        self.max_retries = CEREBRAS_MAX_RETRIES
-        self.retry_delay = CEREBRAS_RETRY_DELAY
-
-        logger.info(f"Cerebras client ready (model: {self.model})")
+        self.client = CerebrasLLM(model_id=EVALUATOR_MODEL_NAME) 
+        logger.info(f"Cerebras client ready (model: {EVALUATOR_MODEL_NAME})")
 
     def evaluate_reasoning(
         self,
@@ -39,65 +25,58 @@ class CerebrasClient:
         ground_truth_reasoning: str,
     ) -> float:
         # 3-axis evaluation: color accuracy, texture/material, spatial context
-        prompt = f"""You are evaluating robot navigation reasoning.
-
-Compare the predicted reasoning with the ground truth.
-Score based on these 3 axes:
-  1. Color accuracy: are colors described correctly?
-  2. Texture and material: are materials described correctly?
-  3. Context and spatial: are spatial relationships correct?
-
-Ground Truth:
-{ground_truth_reasoning}
-
-Predicted Reasoning:
-{predicted_motivation}
-
-Reply with ONLY a single integer between 1 and 5.
-5 = perfect match on all 3 axes
-3 = partially correct
-1 = completely wrong
-Do not write anything else."""
-
-        messages = [{"role": "user", "content": prompt}]
-
-        for attempt in range(1, self.max_retries + 1):
+        
+        aggregated_score = 0.0
+        for prompt in [COLOR_PROMPT, TEXTURE_PROMPT, SPATIAL_PROMPT]:
+            formatted = prompt.format(GT=ground_truth_reasoning, REASONING=predicted_motivation)
+            answer = self.client.ask(prompt=formatted)
+            sleep(0.2)
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=10,
-                    temperature=0.1,
-                )
+                score = float(answer.strip())
+            except ValueError:
+                score = 0.0
+            aggregated_score += score
 
-                text = response.choices[0].message.content.strip()
+        return aggregated_score / 3.0
 
-                score_match = re.search(r"[1-5]", text)
-                if score_match:
-                    raw_score = int(score_match.group())
-                    normalized = (raw_score - 1) / 4.0
-                    logger.debug(f"Reasoning score: {raw_score}/5 = {normalized:.2f}")
-                    return normalized
+        # for attempt in range(1, self.max_retries + 1):
+        #     try:
+        #         response = self.client.chat.completions.create(
+        #             model=self.model,
+        #             messages=messages,
+        #             max_tokens=10,
+        #             temperature=0.1,
+        #         )
+        #         print("Cerebras response:", response.choices[0].message.content.strip())
 
-                logger.warning(f"Could not parse score from: {text}")
-                return 0.5
+        #         text = response.choices[0].message.content.strip()
 
-            except RateLimitError:
-                wait = self.retry_delay * (2 ** (attempt - 1))
-                logger.warning(f"Rate limit! Waiting {wait}s... (attempt {attempt})")
-                time.sleep(wait)
-                if attempt == self.max_retries:
-                    return 0.5
+        #         score_match = re.search(r"[1-5]", text)
+        #         if score_match:
+        #             raw_score = int(score_match.group())
+        #             normalized = (raw_score - 1) / 4.0
+        #             logger.debug(f"Reasoning score: {raw_score}/5 = {normalized:.2f}")
+        #             return normalized
 
-            except APIError as e:
-                logger.error(f"API error: {e}")
-                return 0.5
+        #         logger.warning(f"Could not parse score from: {text}")
+        #         return 0.5
 
-            except Exception as e:
-                logger.error(f"Unexpected error: {e}")
-                return 0.5
+        #     except RateLimitError:
+        #         wait = self.retry_delay * (2 ** (attempt - 1))
+        #         logger.warning(f"Rate limit! Waiting {wait}s... (attempt {attempt})")
+        #         time.sleep(wait)
+        #         if attempt == self.max_retries:
+        #             return 0.5
 
-        return 0.5
+        #     except APIError as e:
+        #         logger.error(f"API error: {e}")
+        #         return 0.5
+
+        #     except Exception as e:
+        #         logger.error(f"Unexpected error: {e}")
+        #         return 0.5
+
+        # return 0.5
 
     def health_check(self) -> bool:
         try:
