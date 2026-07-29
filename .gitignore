@@ -9,3 +9,4 @@ smolvlm_grpo_robot2/
 *.safetensors
 *.bin
 .claude/
+.vscode
