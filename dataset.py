@@ -35,14 +35,15 @@ def format_single_example(example):
             "role": "user",
             "content": [
                 {"type": "image", "image": image},
-                {"type": "text",  "text": task},
+                #{"type": "text",  "text": task},
             ],
         }
     ]
     return {
-        "prompt":    messages,
+        "prompt": messages,
         "reasoning": example["reasoning"],
-        "score":     int(example["score"]),
+        "score": int(example["score"]),
+        "rubrics": example['rubrics']
     }
 
 class RobotDataset:

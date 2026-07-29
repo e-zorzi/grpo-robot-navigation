@@ -1,6 +1,9 @@
 import os
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["HF_HUB_VERBOSITY"] = "warning"
+
 import logging
+import wandb
 
 import torch
 import tyro
@@ -13,10 +16,20 @@ from dataset import load_robot_dataset
 from rewards import score_reward_func, format_reward_func, reasoning_reward_func
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+logging.getLogger("datasets").setLevel(logging.WARNING)
+logging.getLogger("filelock").setLevel(logging.WARNING)  # sometimes chatty too
+
 logger = logging.getLogger(__name__)
 
 
 def main(cfg: GRPOConfig) -> None:
+
+    if cfg.save_artifacts:
+        logger.info("> Will save artifacts on Wandb")
+        wandb_artifact = wandb.Artifact(name="checkpoints", type="model")
+
     logger.info("=" * 60)
     logger.info("  Qwen VL GRPO Training - Robot Navigation")
     logger.info("=" * 60)
@@ -29,9 +42,9 @@ def main(cfg: GRPOConfig) -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("No GPU found!")
     gpu_name = torch.cuda.get_device_name(cfg.device_num)
-    gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
+    gpu_mem = torch.cuda.get_device_properties(cfg.device_num).total_memory // (2**20)
     logger.info(f"GPU: {gpu_name}")
-    logger.info(f"GPU Memory: {gpu_mem:.1f} GB")
+    logger.info(f"GPU Memory: {gpu_mem:.1f} MiB")
     logger.info("Environment OK!")
     logger.info("")
 
@@ -107,6 +120,11 @@ def main(cfg: GRPOConfig) -> None:
     except Exception as e:
         logger.error(f"Training failed: {e}")
         raise
+    finally:
+        logger.info("Uploading artifacts on Wandb...")
+        if cfg.save_artifacts:
+            wandb_artifact.add_dir(cfg.output_dir)
+            wandb.log_artifact(wandb_artifact)
 
 
 if __name__ == "__main__":

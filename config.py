@@ -63,3 +63,7 @@ class GRPOConfig:
     """Logging interval, in steps."""
 
     device_num: str = 0
+    """Device number (CUDA)"""
+
+    save_artifacts: bool = False
+    """Wheter to save the output as artifact on Wandb or not"""

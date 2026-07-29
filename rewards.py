@@ -31,47 +31,21 @@ SPATIAL_WORDS = [
     "behind", "facing", "side", "top", "bottom",
 ]
 
-def extract_motivation_and_score(prompts, completions, completions_ids, trainer_state, **kwargs):
-    motivation = ""
-    match = re.search(r"<motivation>(.*?)</motivation>", completions, re.DOTALL | re.IGNORECASE)
-    if match:
-        motivation = match.group(1).strip()
-    score = None
-    score_match = re.search(r"<score>([012])</score>", completions, re.IGNORECASE)
-    if score_match:
-        try:
-            score = int(score_match.group(1))
-        except ValueError:
-            score = None
-    return motivation, score
-
-def compute_template_reward(completions, **kwargs):
-    rewards = []
-    for completion in map(lambda x: x['content'], completions):
-        has_motivation = bool(re.search(r"<motivation>.*?</motivation>", completions, re.DOTALL | re.IGNORECASE))
-        has_score = bool(re.search(r"<score>[012]</score>", completions, re.IGNORECASE))
-        starts_correctly = bool(re.match(r"^\s*<motivation>", completions, re.IGNORECASE))
-        
-        if not has_motivation or not has_score or not starts_correctly:
-            rewards.append(-5.0)  # large penalty for wrong template!
-        
-        rewards.append(1.0)  # correct template!
-    return rewards
 
 def score_reward_func(completions, score, **kwargs):
     pattern = r"<score>(\d+)</score>"
     completion_contents = [completion[0]["content"] for completion in completions]
     matches = [re.search(pattern, content) for content in completion_contents]
 
-    # -11 is a placeholder when score is not available. Here we don't give negative reward
-    # as we have already penalized the lack of a correct template in another function
+    # -9239 is a placeholder (very unlikely value) when score is not available. Here we don't give 
+    # negative reward as we have already penalized the lack of a correct template
     completion_scores = [int(match.group(1)) if match else -9239 for match in matches]
 
     # If the scores match, reward is 1.0 | if completion score is -9239 then it was invalid 
     # therefore no reward | else (the completion score was valid but does not match) no reward
     return [1.0 if score_gt == score_compl else None if score_compl == -9239 else 0.0 for score_gt, score_compl in zip(score, completion_scores)]
 
-def reasoning_reward_func(completions, **kwargs):
+def reasoning_reward_func(completions, rubrics, **kwargs):
     return [0.0 for _ in range(len(completions))]
     #return evaluate_reasoning(prompts, completions, **kwargs)
 
