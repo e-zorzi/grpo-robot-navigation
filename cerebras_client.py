@@ -4,9 +4,7 @@ import logging
 from typing import Optional
 from openai import OpenAI, RateLimitError, APIError
 from prompts import COLOR_PROMPT, TEXTURE_PROMPT, SPATIAL_PROMPT
-from config import (
-    EVALUATOR_MODEL_NAME
-)
+
 
 from monorepo import load_api_keys, CerebrasLLM
 
@@ -15,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class CerebrasClient:
-    def __init__(self):
-        self.client = CerebrasLLM(model_id=EVALUATOR_MODEL_NAME) 
-        logger.info(f"Cerebras client ready (model: {EVALUATOR_MODEL_NAME})")
+    def __init__(self, evaluator_model_name):
+        self.client = CerebrasLLM(model_id=evaluator_model_name) 
+        logger.info(f"Cerebras client ready (model: {evaluator_model_name})")
 
     def evaluate_reasoning(
         self,

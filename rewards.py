@@ -3,7 +3,6 @@ from datetime import datetime
 COMPLETIONS_LOG = "/kaggle/working/completions_log.jsonl"
 import re
 import logging
-from config import ALPHA, BETA, GAMMA
 from cerebras_client import evaluate_reasoning
 
 logger = logging.getLogger(__name__)
@@ -32,13 +31,13 @@ SPATIAL_WORDS = [
     "behind", "facing", "side", "top", "bottom",
 ]
 
-def extract_motivation_and_score(text):
+def extract_motivation_and_score(prompts, completions, completions_ids, trainer_state, **kwargs):
     motivation = ""
-    match = re.search(r"<motivation>(.*?)</motivation>", text, re.DOTALL | re.IGNORECASE)
+    match = re.search(r"<motivation>(.*?)</motivation>", completions, re.DOTALL | re.IGNORECASE)
     if match:
         motivation = match.group(1).strip()
     score = None
-    score_match = re.search(r"<score>([012])</score>", text, re.IGNORECASE)
+    score_match = re.search(r"<score>([012])</score>", completions, re.IGNORECASE)
     if score_match:
         try:
             score = int(score_match.group(1))
@@ -46,28 +45,42 @@ def extract_motivation_and_score(text):
             score = None
     return motivation, score
 
-def compute_template_reward(text):
-    has_motivation = bool(re.search(r"<motivation>.*?</motivation>", text, re.DOTALL | re.IGNORECASE))
-    has_score = bool(re.search(r"<score>[012]</score>", text, re.IGNORECASE))
-    starts_correctly = bool(re.match(r"^\s*<motivation>", text, re.IGNORECASE))
-    
-    if not has_motivation or not has_score or not starts_correctly:
-        return -5.0  # large penalty for wrong template!
-    
-    return 1.0  # correct template!
+def compute_template_reward(completions, **kwargs):
+    rewards = []
+    for completion in map(lambda x: x['content'], completions):
+        has_motivation = bool(re.search(r"<motivation>.*?</motivation>", completions, re.DOTALL | re.IGNORECASE))
+        has_score = bool(re.search(r"<score>[012]</score>", completions, re.IGNORECASE))
+        starts_correctly = bool(re.match(r"^\s*<motivation>", completions, re.IGNORECASE))
+        
+        if not has_motivation or not has_score or not starts_correctly:
+            rewards.append(-5.0)  # large penalty for wrong template!
+        
+        rewards.append(1.0)  # correct template!
+    return rewards
 
-def compute_score_reward(predicted, ground_truth):
-    if predicted is None:
-        return 0.0
-    diff = abs(predicted - int(ground_truth))
-    if diff == 0:
-        return 1.0
-    elif diff == 1:
-        return 0.5
-    return 0.0
+def score_reward_func(completions, score, **kwargs):
+    pattern = r"<score>(\d+)</score>"
+    completion_contents = [completion[0]["content"] for completion in completions]
+    matches = [re.search(pattern, content) for content in completion_contents]
 
-def compute_reasoning_reward(motivation, gt_reasoning):
-    return evaluate_reasoning(motivation, gt_reasoning)
+    # -11 is a placeholder when score is not available. Here we don't give negative reward
+    # as we have already penalized the lack of a correct template in another function
+    completion_scores = [int(match.group(1)) if match else -9239 for match in matches]
+
+    # If the scores match, reward is 1.0 | if completion score is -9239 then it was invalid 
+    # therefore no reward | else (the completion score was valid but does not match) no reward
+    return [1.0 if score_gt == score_compl else None if score_compl == -9239 else 0.0 for score_gt, score_compl in zip(score, completion_scores)]
+
+def reasoning_reward_func(completions, **kwargs):
+    return [0.0 for _ in range(len(completions))]
+    #return evaluate_reasoning(prompts, completions, **kwargs)
+
+def format_reward_func(completions, **kwargs):
+    """Reward function that checks if the completion has a specific format."""
+    pattern = r"^<motivation>.*?</motivation><score>.*?</score>$"
+    completion_contents = [completion[0]["content"] for completion in completions]
+    matches = [re.match(pattern, content) for content in completion_contents]
+    return [1.0 if match else 0.0 for match in matches]
 
 # def compute_reasoning_reward(motivation, gt_reasoning):
 #     if not motivation or not gt_reasoning:
@@ -87,7 +100,7 @@ def compute_reasoning_reward(motivation, gt_reasoning):
 #     print(f"    color={color:.2f} texture={texture:.2f} spatial={spatial:.2f} → reasoning={reasoning_r:.2f}")
 #     return reasoning_r
 
-def reward_function(prompts, completions, reasoning, score, **kwargs):
+def reward_function(prompts, completions, reasoning, score, alpha=0.5, beta=0.3, gamma=0.2, **kwargs):
     rewards = []
     for completion, gt_reasoning, gt_score in zip(completions, reasoning, score):
         if isinstance(completion, list):
@@ -109,11 +122,11 @@ def reward_function(prompts, completions, reasoning, score, **kwargs):
        
         motivation, pred_score = extract_motivation_and_score(text)
         template_r = compute_template_reward(text)
-        score_r = compute_score_reward(pred_score, gt_score)
+        score_r = score_reward_func(pred_score, gt_score)
         reasoning_r = 0.0
         if motivation:
-            reasoning_r = compute_reasoning_reward(motivation, gt_reasoning)
-        final = ALPHA * reasoning_r + BETA * score_r + GAMMA * template_r
+            reasoning_r = reasoning_reward_func(motivation, gt_reasoning)
+        final = alpha * reasoning_r + beta * score_r + gamma * template_r
         final = max(-5.0, min(1.0, final))
         rewards.append(final)
         print(f"  template={template_r:.2f} score={score_r:.2f} reasoning={reasoning_r:.2f} → final={final:.2f}")

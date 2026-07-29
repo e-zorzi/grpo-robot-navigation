@@ -2,28 +2,9 @@ import io
 import logging
 from PIL import Image
 from datasets import load_dataset
-
-from config import DATASET_NAME, DATASET_SPLIT
+from prompts import INSTRUCTION
 
 logger = logging.getLogger(__name__)
-
-INSTRUCTION = ("You are a robot navigating an enclosed space."
-" Your goal is to navigate to the correct object based on the user's commands. You were given the following task by the"
-" user '{TASK}'. Currently, you are facing a scene represented by the given image. Reason about what you are seeing,"
-" comparing what you know about the task (given the user commands) and the given scene. For example, if the task is"
-" 'Navigate to the black leather sofa near a lampstand' your reasoning process will be"
-" 'I'm currently observing a brown sofa which is different than"
-" black, making it unlikely to be the target sofa. Moreover, there"
-" is no lampstand near it, only a rug and a window' etc. If there"
-" are distortions or artifact, do not focus on them, focus on the"
-" object at hand. At the end of the reasoning process, evaluate"
-" how well the provided image aligns with the user's task. Assign"
-" a confidence score based on the following scale: - 0: You are"
-" certain the image DOES NOT match the task. - 1: You are unsure"
-" whether the image matches the task or not. - 2: You are certain"
-" the image DOES match the task. Provide a concise reasoning"
-" (under 100 words) and strictly follow this output format:\n"
-"<motivation>Your reasoning here</motivation><score>0, 1, or 2</score>")
 
 
 def get_pil_image(image):
@@ -40,12 +21,15 @@ def get_pil_image(image):
 
 
 def format_single_example(example):
-    task  = example["task"]
+    try:
+        task  = example["task"]
+    except: #noqa
+        task = example['instruction']
     image = get_pil_image(example["image"])
     messages = [
         {
             "role": "system",
-            "content": "You are a robot navigation assistant. You MUST start your response immediately with <motivation> — no text before it. Format: <motivation>reasoning</motivation><score>0, 1, or 2</score>. Nothing before <motivation>, nothing after </score>."
+            "content": INSTRUCTION.format(TASK=task)
         },
         {
             "role": "user",
@@ -72,7 +56,7 @@ class RobotDataset:
 
 
 
-def load_robot_dataset(dataset_name=DATASET_NAME, dataset_split=DATASET_SPLIT):
+def load_robot_dataset(dataset_name, dataset_split):
     logger.info(f"Loading {dataset_name} ({dataset_split})...")
 
     raw_dataset = load_dataset(
@@ -85,7 +69,9 @@ def load_robot_dataset(dataset_name=DATASET_NAME, dataset_split=DATASET_SPLIT):
     # Filter invalid rows
     def is_valid(example):
         score = example.get("score")
-        task  = example.get("task", "")
+        task  = example.get("instruction", "")
+        if task == "":
+            task = example.get("task", "")
         return score in [0, 1, 2] and bool(task)
 
     filtered = raw_dataset.filter(is_valid)
@@ -93,18 +79,6 @@ def load_robot_dataset(dataset_name=DATASET_NAME, dataset_split=DATASET_SPLIT):
 
     dataset = RobotDataset(filtered)
     logger.info(f"Dataset ready! {len(dataset)} examples")
-    # DEBUG
-    sample = dataset[0]
-    print("\n=== FULL PROMPT ===")
-    for msg in sample["prompt"]:
-        content = msg["content"]
-        if isinstance(content, str):
-            print(content)
-        elif isinstance(content, list):
-            for part in content:
-                if part["type"] == "text":
-                    print(part["text"])
-    print("=== END PROMPT ===\n")
     return dataset
 
 

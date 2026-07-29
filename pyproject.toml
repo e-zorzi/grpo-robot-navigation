@@ -16,9 +16,11 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "qwen-vl-utils>=0.0.14",
     "safetensors>=0.7.0",
-    "torch>=2.12.0",
+    "torch==2.8.0",
+    "torchvision>=0.23.0",
     "transformers>=5.9.0",
     "trl>=1.5.0",
+    "tyro>=1.0.15",
     "wandb>=0.27.0",
 ]
 
