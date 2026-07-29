@@ -7,6 +7,24 @@ from config import DATASET_NAME, DATASET_SPLIT
 
 logger = logging.getLogger(__name__)
 
+INSTRUCTION = ("You are a robot navigating an enclosed space."
+" Your goal is to navigate to the correct object based on the user's commands. You were given the following task by the"
+" user '{TASK}'. Currently, you are facing a scene represented by the given image. Reason about what you are seeing,"
+" comparing what you know about the task (given the user commands) and the given scene. For example, if the task is"
+" 'Navigate to the black leather sofa near a lampstand' your reasoning process will be"
+" 'I'm currently observing a brown sofa which is different than"
+" black, making it unlikely to be the target sofa. Moreover, there"
+" is no lampstand near it, only a rug and a window' etc. If there"
+" are distortions or artifact, do not focus on them, focus on the"
+" object at hand. At the end of the reasoning process, evaluate"
+" how well the provided image aligns with the user's task. Assign"
+" a confidence score based on the following scale: - 0: You are"
+" certain the image DOES NOT match the task. - 1: You are unsure"
+" whether the image matches the task or not. - 2: You are certain"
+" the image DOES match the task. Provide a concise reasoning"
+" (under 100 words) and strictly follow this output format:\n"
+"<motivation>Your reasoning here</motivation><score>0, 1, or 2</score>")
+
 
 def get_pil_image(image):
     if isinstance(image, Image.Image):
