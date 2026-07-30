@@ -1,14 +1,19 @@
 import json
 from datetime import datetime
-COMPLETIONS_LOG = "/kaggle/working/completions_log.jsonl"
 import re
 import logging
 import numpy as np
 import ast
-logger = logging.getLogger(__name__)
+from config import GRPOConfig
 
+MAX_RUBRICS = 12
+MAX_REASONING_LEN = 100
+MAX_RUBRIC_LEN = 300
+
+logger = logging.getLogger(__name__)
 _RUBRIC_PROMPT = """For each rubric criterion in these rubrics\n{RUBRICS}\nEvaluate whether the reasoning '{REASONING}' satisfy it.\n
-If a rubric is satisfied, return 1, else 0. Return a list '[]' filled with these values, one for each rubric.
+If a rubric is satisfied, return 1, else 0. Return a list filled with these values, one for each rubric. Only include values 1 and 0 in the list,
+nothing else.
 """
 
 COLOR_WORDS = [
@@ -38,25 +43,54 @@ SPATIAL_WORDS = [
 from monorepo import AsyncClientBasedLLM, ClientBasedLLM
 import time
 
-MODEL_NAME = "Qwen/Qwen3-30B-A3B"  # swap for your checkpoint (local path or HF repo id)
+MODEL_NAME = GRPOConfig.evaluator_model_name 
 
 _ASYNC_CLIENT = AsyncClientBasedLLM(model_id=MODEL_NAME)
+
 def ask_batch_prompts_async(prompts):
-    now = time.time()
-    responses = _ASYNC_CLIENT.ask_batch(prompts)
-    later = time.time()
-    #print(f"> Took {later - now}")
-    return responses
+    return _ASYNC_CLIENT.ask_batch(prompts, max_tokens=64)
 
-#_CLIENT = ClientBasedLLM(model_id=MODEL_NAME)
-# def ask_batch_prompts(prompts):
-#     now = time.time()
-#     responses = [_CLIENT.ask(prompt=p) for p in prompts]
-#     later = time.time()
-#     print(f"> Took {later - now}")
-#     return responses
+def reasoning_reward_func(completions, rubrics, **kwargs):
+    """Reward function that checks if the completion has a specific format."""
+    rubric_points = [np.array(list(map(lambda x: x['points'], r[:MAX_RUBRICS]))) for r in rubrics] #max 10 rubrics
+    pattern = r"<motivation>(.+)</motivation>"
+    completion_contents = [completion[0]["content"] for completion in completions]
+    matches = [re.search(pattern, content) for content in completion_contents]
+    completion_reasonings = [match.group(1)[:MAX_REASONING_LEN] if match else None for match in matches]
+    scores = []
 
 
+    prompts = []
+    for i in range(len(completion_reasonings)):
+        try:
+            prompts.append(
+                _RUBRIC_PROMPT.format(
+                    RUBRICS=[x["criterion"][:MAX_RUBRIC_LEN] for x in rubrics[i][:MAX_RUBRICS]],
+                    REASONING=completion_reasonings[i],
+                )
+            )
+        except: #noqa
+            prompts.append("Just return None")
+
+    try:
+        responses = ask_batch_prompts_async(prompts)
+    except Exception as e:
+        print(e)
+        print("Problem with the client. The responses will be set to None, with no reward assigned for this batch")
+        responses = [None for _ in range(len(prompts))]
+        
+    for j, response in enumerate(responses):
+        try:
+            if "</think>" in response:
+                response = response.split("</think>")[1].lstrip(" \n").rstrip(" \n")
+            else:
+                response = response.lstrip(" \n").rstrip(" \n")
+            # Eval
+            evaluation = np.asarray(ast.literal_eval(response), dtype=np.float32)
+            scores.append((evaluation*rubric_points[j]).sum().item())
+        except:
+            scores.append(None)
+    return scores
 
 def score_reward_func(completions, score, **kwargs):
     pattern = r"<score>(\d+)</score>"
@@ -71,41 +105,6 @@ def score_reward_func(completions, score, **kwargs):
     # therefore no reward | else (the completion score was valid but does not match) no reward
     return [1.0 if score_gt == score_compl else None if score_compl == -9239 else 0.0 for score_gt, score_compl in zip(score, completion_scores)]
 
-def reasoning_reward_func(completions, rubrics, **kwargs):
-    """Reward function that checks if the completion has a specific format."""
-    rubric_points = np.array(list(map(lambda x: x['points'], rubrics[0])))
-    pattern = r"<motivation>(.+)</motivation>"
-    completion_contents = [completion[0]["content"] for completion in completions]
-    matches = [re.search(pattern, content) for content in completion_contents]
-    completion_reasonings = [match.group(1) if match else None for match in matches]
-    scores = []
-
-    prompts = [
-        _RUBRIC_PROMPT.format(
-            RUBRICS=[x["criterion"] for x in rubrics[i]],
-            REASONING=completion_reasonings[i],
-        )
-        for i in range(len(completion_reasonings))
-    ]
-
-    responses = ask_batch_prompts_async(prompts)
-        
-    for response in responses:
-        try:
-            if "</think>" in response:
-                response = response.split("</think>")[1].lstrip(" \n").rstrip(" \n")
-            else:
-                response = response.lstrip(" \n").rstrip(" \n")
-            # Eval
-            if response.startswith("[") and response.endswith("]") and "def" not in response and "1" in response and "0" in response:
-                evaluation = np.asarray(ast.literal_eval(response), dtype=np.float32)
-
-                scores.append((evaluation*rubric_points).sum().item())
-            else:
-                scores.append(None)
-        except:
-            scores.append(None)
-    return scores
 
 
 def format_reward_func(completions, **kwargs):

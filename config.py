@@ -8,7 +8,7 @@ class GRPOConfig:
     model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct"
     """HF checkpoint (repo id or local path) to fine-tune."""
 
-    evaluator_model_name: str = "gpt-oss-120b"
+    evaluator_model_name: str = "Qwen/Qwen3-30B-A3B-Instruct-2507"
     """Model used to score/evaluate generations for the reward function."""
 
     output_dir: str = "./qwen_grpo_robot"
