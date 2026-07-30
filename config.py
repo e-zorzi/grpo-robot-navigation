@@ -29,17 +29,14 @@ class GRPOConfig:
     gamma: float = 0.2
     """Reward mixing coefficient (component 3)."""
 
-    lora_r: int = 128
+    lora_r: int = 64
     """LoRA rank."""
 
-    lora_alpha: int = 64
+    lora_alpha: int = 32
     """LoRA alpha."""
 
     num_epochs: int = 1
     """Number of training epochs."""
-
-    batch_size: int = 4
-    """Nominal/global batch size (informational; trainer uses per_device_train_batch_size)."""
 
     per_device_train_batch_size: int = 4
     """Per-device batch size passed to GRPOTrainer."""
@@ -50,7 +47,7 @@ class GRPOConfig:
     max_completion_length: int = 256
     """Max number of tokens generated per completion."""
 
-    num_generations: int = 4
+    num_generations: int = 2
     """Number of completions sampled per prompt (GRPO group size)."""
 
     use_vllm: bool = False

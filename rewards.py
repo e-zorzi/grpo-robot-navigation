@@ -3,9 +3,13 @@ from datetime import datetime
 COMPLETIONS_LOG = "/kaggle/working/completions_log.jsonl"
 import re
 import logging
-from cerebras_client import evaluate_reasoning
-
+import numpy as np
+import ast
 logger = logging.getLogger(__name__)
+
+_RUBRIC_PROMPT = """For each rubric criterion in these rubrics\n{RUBRICS}\nEvaluate whether the reasoning '{REASONING}' satisfy it.\n
+If a rubric is satisfied, return 1, else 0. Return a list '[]' filled with these values, one for each rubric.
+"""
 
 COLOR_WORDS = [
     "white", "black", "red", "blue", "green",
@@ -31,6 +35,28 @@ SPATIAL_WORDS = [
     "behind", "facing", "side", "top", "bottom",
 ]
 
+from monorepo import AsyncClientBasedLLM, ClientBasedLLM
+import time
+
+MODEL_NAME = "Qwen/Qwen3-30B-A3B"  # swap for your checkpoint (local path or HF repo id)
+
+_ASYNC_CLIENT = AsyncClientBasedLLM(model_id=MODEL_NAME)
+def ask_batch_prompts_async(prompts):
+    now = time.time()
+    responses = _ASYNC_CLIENT.ask_batch(prompts)
+    later = time.time()
+    #print(f"> Took {later - now}")
+    return responses
+
+#_CLIENT = ClientBasedLLM(model_id=MODEL_NAME)
+# def ask_batch_prompts(prompts):
+#     now = time.time()
+#     responses = [_CLIENT.ask(prompt=p) for p in prompts]
+#     later = time.time()
+#     print(f"> Took {later - now}")
+#     return responses
+
+
 
 def score_reward_func(completions, score, **kwargs):
     pattern = r"<score>(\d+)</score>"
@@ -46,8 +72,41 @@ def score_reward_func(completions, score, **kwargs):
     return [1.0 if score_gt == score_compl else None if score_compl == -9239 else 0.0 for score_gt, score_compl in zip(score, completion_scores)]
 
 def reasoning_reward_func(completions, rubrics, **kwargs):
-    return [0.0 for _ in range(len(completions))]
-    #return evaluate_reasoning(prompts, completions, **kwargs)
+    """Reward function that checks if the completion has a specific format."""
+    rubric_points = np.array(list(map(lambda x: x['points'], rubrics[0])))
+    pattern = r"<motivation>(.+)</motivation>"
+    completion_contents = [completion[0]["content"] for completion in completions]
+    matches = [re.search(pattern, content) for content in completion_contents]
+    completion_reasonings = [match.group(1) if match else None for match in matches]
+    scores = []
+
+    prompts = [
+        _RUBRIC_PROMPT.format(
+            RUBRICS=[x["criterion"] for x in rubrics[i]],
+            REASONING=completion_reasonings[i],
+        )
+        for i in range(len(completion_reasonings))
+    ]
+
+    responses = ask_batch_prompts_async(prompts)
+        
+    for response in responses:
+        try:
+            if "</think>" in response:
+                response = response.split("</think>")[1].lstrip(" \n").rstrip(" \n")
+            else:
+                response = response.lstrip(" \n").rstrip(" \n")
+            # Eval
+            if response.startswith("[") and response.endswith("]") and "def" not in response and "1" in response and "0" in response:
+                evaluation = np.asarray(ast.literal_eval(response), dtype=np.float32)
+
+                scores.append((evaluation*rubric_points).sum().item())
+            else:
+                scores.append(None)
+        except:
+            scores.append(None)
+    return scores
+
 
 def format_reward_func(completions, **kwargs):
     """Reward function that checks if the completion has a specific format."""
@@ -55,53 +114,3 @@ def format_reward_func(completions, **kwargs):
     completion_contents = [completion[0]["content"] for completion in completions]
     matches = [re.match(pattern, content) for content in completion_contents]
     return [1.0 if match else 0.0 for match in matches]
-
-# def compute_reasoning_reward(motivation, gt_reasoning):
-#     if not motivation or not gt_reasoning:
-#         return 0.0
-#     m = motivation.lower()
-#     g = gt_reasoning.lower()
-#     gt_colors = set(w for w in COLOR_WORDS if w in g)
-#     pred_colors = set(w for w in COLOR_WORDS if w in m)
-#     color = len(pred_colors & gt_colors) / len(gt_colors) if gt_colors else 0.5
-#     gt_tex = set(w for w in TEXTURE_WORDS if w in g)
-#     pred_tex = set(w for w in TEXTURE_WORDS if w in m)
-#     texture = len(pred_tex & gt_tex) / len(gt_tex) if gt_tex else 0.5
-#     gt_spa = set(w for w in SPATIAL_WORDS if w in g)
-#     pred_spa = set(w for w in SPATIAL_WORDS if w in m)
-#     spatial = len(pred_spa & gt_spa) / len(gt_spa) if gt_spa else 0.5
-#     reasoning_r = (color + texture + spatial) / 3.0
-#     print(f"    color={color:.2f} texture={texture:.2f} spatial={spatial:.2f} → reasoning={reasoning_r:.2f}")
-#     return reasoning_r
-
-def reward_function(prompts, completions, reasoning, score, alpha=0.5, beta=0.3, gamma=0.2, **kwargs):
-    rewards = []
-    for completion, gt_reasoning, gt_score in zip(completions, reasoning, score):
-        if isinstance(completion, list):
-            text = completion[0]["content"]
-        else:
-            text = str(completion)
-
-        # ✅ Log full completion to disk
-        with open(COMPLETIONS_LOG, "a") as f:
-            json.dump({
-                "timestamp":        datetime.now().isoformat(),
-                "completion":       text,
-                "follows_template": text.strip().startswith("<motivation>"),
-                "gt_score":         int(gt_score),
-            }, f)
-            f.write("\n")
-
-        print(f"  COMPLETION: {text}")
-       
-        motivation, pred_score = extract_motivation_and_score(text)
-        template_r = compute_template_reward(text)
-        score_r = score_reward_func(pred_score, gt_score)
-        reasoning_r = 0.0
-        if motivation:
-            reasoning_r = reasoning_reward_func(motivation, gt_reasoning)
-        final = alpha * reasoning_r + beta * score_r + gamma * template_r
-        final = max(-5.0, min(1.0, final))
-        rewards.append(final)
-        print(f"  template={template_r:.2f} score={score_r:.2f} reasoning={reasoning_r:.2f} → final={final:.2f}")
-    return rewards

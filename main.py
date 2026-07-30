@@ -10,7 +10,6 @@ import tyro
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from trl import GRPOTrainer, GRPOConfig as TRLGRPOConfig
 from peft import LoraConfig, get_peft_model
-import functools
 from config import GRPOConfig
 from dataset import load_robot_dataset
 from rewards import score_reward_func, format_reward_func, reasoning_reward_func
@@ -107,7 +106,7 @@ def main(cfg: GRPOConfig) -> None:
 
     logger.info("[5/5] Starting training...")
     logger.info(f"  Epochs:       {cfg.num_epochs}")
-    logger.info(f"  Batch size:   {cfg.batch_size}")
+    logger.info(f"  Batch size:   {cfg.per_device_train_batch_size}")
     logger.info(f"  LR:           {cfg.learning_rate}")
     logger.info(f"  Generations:  {cfg.num_generations}")
     logger.info("")
