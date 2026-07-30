@@ -1,4 +1,5 @@
 import os
+
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_VERBOSITY"] = "warning"
 
@@ -14,7 +15,9 @@ from config import GRPOConfig
 from dataset import load_robot_dataset
 from rewards import score_reward_func, format_reward_func, reasoning_reward_func
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 logging.getLogger("datasets").setLevel(logging.WARNING)
@@ -24,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 def main(cfg: GRPOConfig) -> None:
-
     if cfg.save_artifacts:
         logger.info("> Will save artifacts on Wandb")
         wandb_artifact = wandb.Artifact(name="checkpoints", type="model")
@@ -74,7 +76,7 @@ def main(cfg: GRPOConfig) -> None:
             gradient_checkpointing=True,
             use_vllm=cfg.use_vllm,
             report_to="wandb",
-            reward_weights=[cfg.alpha, cfg.beta, cfg.gamma]
+            reward_weights=[cfg.alpha, cfg.beta, cfg.gamma],
         )
         lora_config = LoraConfig(
             task_type="CAUSAL_LM",
@@ -97,7 +99,7 @@ def main(cfg: GRPOConfig) -> None:
             args=trl_config,
             train_dataset=train_dataset,
             processing_class=processor,
-            reward_funcs=[format_reward_func, score_reward_func, reasoning_reward_func]
+            reward_funcs=[format_reward_func, score_reward_func, reasoning_reward_func],
         )
         logger.info("Trainer ready!")
     except Exception as e:
@@ -120,8 +122,8 @@ def main(cfg: GRPOConfig) -> None:
         logger.error(f"Training failed: {e}")
         raise
     finally:
-        logger.info("Uploading artifacts on Wandb...")
         if cfg.save_artifacts:
+            logger.info("Uploading artifacts on Wandb...")
             wandb_artifact.add_dir(cfg.output_dir)
             wandb.log_artifact(wandb_artifact)
 
