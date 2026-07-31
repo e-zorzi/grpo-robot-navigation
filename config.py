@@ -53,7 +53,7 @@ class GRPOConfig:
     use_vllm: bool = False
     """Whether to use vLLM for rollout generation."""
 
-    save_steps: int = 2000
+    save_steps: int = 200
     """Checkpoint save interval, in steps."""
 
     logging_steps: int = 10
