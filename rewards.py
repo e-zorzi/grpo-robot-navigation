@@ -12,8 +12,11 @@ MAX_REASONING_LEN = 800
 MAX_RUBRIC_LEN = 300
 
 logger = logging.getLogger(__name__)
-_RUBRIC_PROMPT = """For each rubric criterion in these rubrics\n{RUBRICS}\nEvaluate whether the reasoning '{REASONING}' satisfy it.\n
-If a rubric is satisfied, return 1, else 0. Return a list filled with these values, one for each rubric. Only include values 1 and 0 in the list, nothing else.
+
+_RUBRIC_PROMPT = """Consider the following statement:\n'{REASONING}'\n
+For each of the following criterion, return 1 if the statement satisfy it, 0 otherwise.\n
+{RUBRICS}\n
+Return a list filled with these values, one for each criterion. Only include values 1 and 0 in the list, nothing else.
 """
 
 COLOR_WORDS = [
@@ -129,10 +132,10 @@ def reasoning_reward_func(completions, rubrics, **kwargs):
         try:
             prompts.append(
                 _RUBRIC_PROMPT.format(
-                    RUBRICS=[
+                    RUBRICS="\n".join([
                         x["criterion"][:MAX_RUBRIC_LEN]
                         for x in rubrics[i][:MAX_RUBRICS]
-                    ],
+                    ]),
                     REASONING=completion_reasonings[i],
                 )
             )
