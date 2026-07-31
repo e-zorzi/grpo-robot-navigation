@@ -14,7 +14,7 @@ MAX_RUBRIC_LEN = 300
 logger = logging.getLogger(__name__)
 
 _RUBRIC_PROMPT = """Consider the following statement:\n'{REASONING}'\n
-For each of the following criterion, return 1 if the statement satisfy it, 0 otherwise.\n
+For each of the following criterion, return 1 if the above statement satisfies it, 0 otherwise.\n
 {RUBRICS}\n
 Return a list filled with these values, one for each criterion. Only include values 1 and 0 in the list, nothing else.
 """
