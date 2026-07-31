@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import ast
 from config import GRPOConfig
+import weave
 
 MAX_RUBRICS = 20
 MAX_REASONING_LEN = 800
@@ -106,6 +107,7 @@ MODEL_NAME = GRPOConfig.evaluator_model_name
 _ASYNC_CLIENT = AsyncClientBasedLLM(model_id=MODEL_NAME)
 
 
+@weave.op(tracing_sample_rate=0.1)
 def ask_batch_prompts_async(prompts):
     return _ASYNC_CLIENT.ask_batch(prompts, max_tokens=64)
 
