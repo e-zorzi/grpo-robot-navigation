@@ -13,8 +13,7 @@ MAX_RUBRIC_LEN = 300
 
 logger = logging.getLogger(__name__)
 _RUBRIC_PROMPT = """For each rubric criterion in these rubrics\n{RUBRICS}\nEvaluate whether the reasoning '{REASONING}' satisfy it.\n
-If a rubric is satisfied, return 1, else 0. Return a list filled with these values, one for each rubric. Only include values 1 and 0 in the list,
-nothing else.
+If a rubric is satisfied, return 1, else 0. Return a list filled with these values, one for each rubric. Only include values 1 and 0 in the list, nothing else.
 """
 
 COLOR_WORDS = [
