@@ -109,7 +109,7 @@ MODEL_NAME = GRPOConfig.evaluator_model_name
 _ASYNC_CLIENT = AsyncClientBasedLLM(model_id=MODEL_NAME)
 
 
-@weave.op(tracing_sample_rate=0.1)
+@weave.op(tracing_sample_rate=0.033)
 def ask_batch_prompts_async(prompts):
     return _ASYNC_CLIENT.ask_batch(prompts, max_tokens=64)
 
