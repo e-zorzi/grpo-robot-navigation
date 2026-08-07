@@ -31,6 +31,8 @@ def main(cfg: GRPOConfig) -> None:
         logger.info("> Will save artifacts on Wandb")
         wandb_artifact = wandb.Artifact(name="checkpoints", type="model")
 
+    wandb.save("config.py")
+
     logger.info("=" * 60)
     logger.info("  Qwen VL GRPO Training - Robot Navigation")
     logger.info("=" * 60)
@@ -112,7 +114,6 @@ def main(cfg: GRPOConfig) -> None:
     logger.info(f"  LR:           {cfg.learning_rate}")
     logger.info(f"  Generations:  {cfg.num_generations}")
     logger.info("")
-
     try:
         trainer.train()
         logger.info("Training complete! ✅")
